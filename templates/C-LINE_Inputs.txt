@@ -1,0 +1,41 @@
+Source file
+'sources.csv'
+-------------------------
+Receptor File
+'receptors.csv'
+-------------------------
+MET (surface) file
+'met_5cond_national_NWS_sites_by_L_quantilesMGS.csv'
+--------------------------
+TAFs
+Monthly File
+'Monthly_TAFs.txt'
+Weekly File
+'Weekly_TAFs.txt'
+Weekday File
+'WeekdayDiurnal_TAFs.txt'
+Weekend File
+'WeekendDiurnal_TAFs.txt'
+------------------------------
+Hourly Dispersion Filename
+'concentrations.csv'
+------------------------------
+C-LINE user options:
+---------------------------------
+Met Conditions: (1)Stable, (2) Slightly Stable, (3) Neutral, (4) Slightly Convective, (5) Convective
+${scenario.met_conditions}
+------------------------------
+Season: (1) Winter, (2) Summer
+${scenario.season}
+------------------------------
+Day: (1) Weekday, (2) Weekend
+${scenario.day}
+------------------------------
+Hour: (1)AM_peak, (2)Mid-day, (3)PM-peak, (4)Off-peak
+${scenario.hour}
+---------------------------------
+Pollutants Available: (1)NOx, (2)Benz, (3)pm25,(4)D_pm25, (5)EC25, (6)OC25, (7)CO, (8)FORM, (9)ALD2,(10)ACRO, (11)1,3-BUTA
+${scenario_run.pollutant}
+---------------------------------
+Quick Mode: 10 sources & 10 Receptors ('Y' or 'N')
+'N'

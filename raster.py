@@ -74,11 +74,11 @@ class RasterGenerator(object):
         interp_lng = interp_lng * lng_step + min_lng
         interp_lat = interp_lat * lat_step + min_lat
         interp_lat_lng = self.transform_interpolation_grid_to_predictor_input(interp_lat, interp_lng)
-        interp_x_y = np.array([geo.mercator_to_lcc(lng, lat) for (lng, lat) in interp_lat_lng])
-        if self.legend_min:
-            conc[conc < self.legend_min] = self.legend_min
-        if self.legend_max:
-            conc[conc > self.legend_max] = self.legend_max
+        interp_x_y = np.array([geo.mercator_to_lcc(lng, lat) for (lat, lng) in interp_lat_lng])
+        if self.scenario_run.model_min_value:
+            conc[conc < self.scenario_run.model_min_value] = self.scenario_run.model_min_value
+        if self.scenario_run.model_max_value:
+            conc[conc > self.scenario_run.model_max_value] = self.scenario_run.model_max_value
         results = interpolate.griddata(coordinates, conc, interp_x_y, fill_value=0, method='linear')
         img_data = self.transform_array_to_image_data(results, len(interp_lng), len(interp_lng[0]))
         self.create_concentration_image(img_data)
@@ -127,8 +127,8 @@ class RasterGenerator(object):
         fig, ax = plt.subplots()
         fig.set_figheight(4)
         fig.set_figwidth(0.4)
-        min_ = self.legend_min
-        max_ = self.legend_max
+        min_ = self.scenario_run.model_min_value
+        max_ = self.scenario_run.model_max_value
         is_comparison_run = isinstance(self.scenario_run, models.ComparisonScenarioRun)
         if is_comparison_run and self.scenario_run.comparison_mode == "Relative":
             if not min_:
@@ -145,9 +145,9 @@ class RasterGenerator(object):
             cb = mpl.colorbar.ColorbarBase(ax, norm=norm, ticks=ticks, orientation='vertical')
             cb.ax.set_yticklabels([label(v) for v in ticks])
         elif is_comparison_run and self.scenario_run.comparison_mode == "Relative (%)":
-            if min_ == self.legend_min:
+            if min_ == self.scenario_run.model_min_value:
                 min_ = max(np.min(concentrations[:, 2]), min_)
-            if max_ == self.legend_max:
+            if max_ == self.scenario_run.model_max_value:
                 max_ = min(np.max(concentrations[:, 2]), max_)
             if np.abs(max_) > np.abs(min_):
                 min_ = -max_
