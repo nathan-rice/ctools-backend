@@ -1,5 +1,6 @@
 import json
-import models
+
+from ctools_backend import models
 import tasks
 
 lat_min = 32.6191597574

@@ -4,8 +4,7 @@ import numpy as np
 
 import tablib
 
-import raster
-import models
+from ctools_backend import models, raster
 from wrappers import CTools
 
 
@@ -23,11 +22,13 @@ def transform_comparison_data(datum):
     return np.sign(datum) * np.log10(abs_val)
 
 
-def ctools(pollutant, model_type, scenario_id):
+def ctools(pollutant, model_type, scenario_id, user_id=None, tool='CPORT'):
     session = models.Session()
     scenario = session.query(models.Scenario).filter(models.Scenario.scenario_id == scenario_id).first()
+    if not user_id:
+        user_id = scenario.user_id
     scenario_run = models.ScenarioRun(status="pending", pollutant=pollutant, model_type=model_type,
-                                      scenario=scenario)
+                                      scenario=scenario, user_id=user_id, tool=tool)
     session.add(scenario_run)
     session.commit()
     cline_ = CTools(scenario=scenario, scenario_run=scenario_run)
@@ -37,14 +38,18 @@ def ctools(pollutant, model_type, scenario_id):
     raster_generator.create_pollution_raster(concentrations)
     scenario_run.finalize_run()
     session.commit()
+    return scenario_run
 
 
-def ctools_comparison(pollutant, model_type, comparison_type, scenario_id_1, scenario_id_2):
+def ctools_comparison(pollutant, model_type, comparison_type, scenario_id_1, scenario_id_2, user_id=None, tool='CPORT'):
     session = models.Session()
     scenario_1 = session.query(models.Scenario).filter(models.Scenario.scenario_id == scenario_id_1).first()
     scenario_2 = session.query(models.Scenario).filter(models.Scenario.scenario_id == scenario_id_2).first()
+    if not user_id:
+        user_id = scenario_1.user_id
     scenario_run = models.ComparisonScenarioRun(status="pending", pollutant=pollutant, model_type=model_type,
-                                                scenario_1=scenario_1, scenario_2=scenario_2)
+                                                scenario_1=scenario_1, scenario_2=scenario_2, user_id=user_id,
+                                                tool=tool, comparison_mode=comparison_type)
     session.add(scenario_run)
     session.commit()
     cline_1 = CTools(scenario=scenario_1, scenario_run=scenario_run, output_directory=scenario_run.output_directory_1)
@@ -52,7 +57,7 @@ def ctools_comparison(pollutant, model_type, comparison_type, scenario_id_1, sce
     concentrations = cline_1.calculate_concentrations()
     concentrations_2 = cline_2.calculate_concentrations()
     raster_generator = raster.RasterGenerator(scenario_run=scenario_run)
-    if comparison_type == "Relative":
+    if comparison_type == "1":
         title = "concentration difference"
         concentrations[:, 2] = [transform_comparison_data(d) for d in
                                 (concentrations[:, 2] - concentrations_2[:, 2])]
@@ -63,11 +68,22 @@ def ctools_comparison(pollutant, model_type, comparison_type, scenario_id_1, sce
     create_results_file(concentrations, scenario_run.temp_dir, title)
     scenario_run.finalize_run()
     session.commit()
+    return scenario_run
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("run_type", help="the type of run to perform")
-    parser.add_argument("-s", "--scenario", help="the scenario ID to use for run parameters")
+    parser.add_argument("-t", "--model_type", help="""The type of model to compute
+    1: Hourly concentrations
+    2: Annual average concentrations
+    3: Cancer risk from annual average concentrations
+    4: Non-cancer risk from annual average concentrations
+    """, default="1")
+    parser.add_argument("-s", "--scenario", help="The scenario ID to use for run parameters")
+    parser.add_argument("-c", "--compare_with", help="The scenario ID to compare with")
+    parser.add_argument("-m", "--comparison_mode", help="""The type of comparison to perform
+    1: Relative
+    2: Relative (%)
+    """, default="1")
     parser.add_argument("-p", "--pollutant", help="""The pollutant to model
     1: NOx
     2: Benz
@@ -80,13 +96,15 @@ def main():
     9: ALD2
     10: ACRO
     11: 1,3-BUTA
-    """)
-    parser.add_argument("-t", "--type", help="""the model type
-    1: hourly concentrations
-    2: annual average concentrations
-    3: cancer risk from annual averages
-    4: non-cancer risk from annual averages""")
-
+    """, default="1")
+    parser.add_argument("-u", "--user", help="The user-id to associate with this scenario run")
+    parser.add_argument("--tool", help="The tool this scenario run should be associated with", default="CPORT")
+    args = parser.parse_args()
+    if args.compare_with:
+        ctools_comparison(args.pollutant, args.model_type, args.comparison_mode, args.scenario, args.compare_with,
+                          user_id=args.user, tool=args.tool)
+    else:
+        ctools(args.pollutant, args.model_type, args.scenario, user_id=args.user, tool=args.tool)
 
 if __name__ == "__main__":
     main()

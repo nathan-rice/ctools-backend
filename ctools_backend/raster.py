@@ -3,7 +3,8 @@ import numpy as np
 import math
 import matplotlib as mpl
 import matplotlib
-import geo
+
+from ctools_backend import geo
 import models
 
 matplotlib.use("Agg")  # needs to be before pyplot import
@@ -24,7 +25,7 @@ class RasterGenerator(object):
         else:
             units = "  ($\mu g/m^{3}$)"
         is_comparison_run = isinstance(scenario_run, models.ComparisonScenarioRun)
-        if is_comparison_run and self.scenario_run.comparison_mode == "Relative":
+        if is_comparison_run and self.scenario_run.comparison_mode == 1:
             if self.scenario_run.model_type == 2:
                 self._legend_text = self.pollutant + " annual average difference" + units
             elif self.scenario_run.model_type == 3:

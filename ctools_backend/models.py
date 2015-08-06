@@ -6,22 +6,30 @@ import tempfile
 import shutil
 import subprocess
 from collections import namedtuple
+import glob
 
 import sqlalchemy as sa
-import glob
 from sqlalchemy import orm
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import JSON
 from geoalchemy2 import Geometry
+from geoalchemy2.shape import to_shape
 
-import geo
-
+from ctools_backend import geo
 import settings
-
 
 engine = sa.create_engine(settings.connection_string)
 Base = declarative_base(metadata=sa.MetaData(bind=engine))
 Session = orm.scoped_session(orm.sessionmaker(bind=engine))
+
+def point_wkt_to_array(point):
+    return list(v[0] for v in to_shape(point).xy)
+
+def null_data(d):
+    if d is None:
+        return -999
+    else:
+        return d
 
 class Receptor(object):
     fields = ["id", "x", "y", "lat", "lng"]
@@ -78,6 +86,10 @@ class Road(Base):
         self.diesel_truck_multiplier = kwargs.pop("diesel_truck_multiplier", 1)
         super(Road, self).__init__(**kwargs)
 
+    @classmethod
+    def construct_namedtuple(cls, *args):
+        return cls.namedtuple_class(*[null_data(a) for a in args])
+
     def as_namedtuple(self):
         return self.namedtuple_class(
             self.gid, self.id, self.sign1, self.from_x, self.from_y, self.to_x, self.to_y,
@@ -93,7 +105,7 @@ class Road(Base):
 class Railway(Base):
     __tablename__ = "railways"
     fields = ["gid", "rrowner1", "fromx", "fromy", "tox", "toy", "sf_id", "nox", "benz", "pm25",
-              "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3", "geom"]
+              "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3", "toluene", "so2", "geom"]
     namedtuple_class = namedtuple("Railway", fields)
     gid = sa.Column("objectid", sa.Integer, primary_key=True)
     rrowner1 = sa.Column(sa.String)
@@ -113,12 +125,21 @@ class Railway(Base):
     ald2 = sa.Column(sa.Numeric(asdecimal=False))
     acro = sa.Column(sa.Numeric(asdecimal=False))
     butal_3 = sa.Column(sa.Numeric(asdecimal=False))
+    toluene = sa.Column(sa.Numeric(asdecimal=False))
+    so2 = sa.Column(sa.Numeric(asdecimal=False))
     geom = sa.Column(Geometry('MULTILINESTRING'))
+
+    @classmethod
+    def construct_namedtuple(cls, *args):
+        return cls.namedtuple_class(*[null_data(a) for a in args])
 
     def as_namedtuple(self):
         return self.namedtuple_class(self.gid, self.rrowner1, self.fromx, self.fromy, self.tox, self.toy,
-                                     self.sf_id, self.nox, self.benz, self.pm25, self.dies_pm25, self.ec,
-                                     self.oc, self.co, self.form, self.ald2, self.acro, self.butal_3,
+                                     self.sf_id, null_data(self.nox), null_data(self.benz), null_data(self.pm25),
+                                     null_data(self.dies_pm25), null_data(self.ec),
+                                     null_data(self.oc), null_data(self.co), null_data(self.form),
+                                     null_data(self.ald2), null_data(self.acro), null_data(self.butal_3),
+                                     null_data(self.toluene), null_data(self.so2),
                                      geo.multilinestring_to_point_list(self.geom))
 
     @staticmethod
@@ -130,7 +151,7 @@ class Railway(Base):
 class AreaSource(Base):
     __tablename__ = "area_sources"
     fields = ["facility", "gid", "sf_id", "nox", "benz", "pm2_5", "dies_pm25", "ec", "oc",
-              "co", "form", "ald2", "acro", "butal_3", "geom"]
+              "co", "form", "ald2", "acro", "butal_3", "toluene", "so2", "geom"]
     namedtuple_class = namedtuple("AreaSource", fields)
     facility = sa.Column(sa.Text)
     gid = sa.Column("object_id", sa.Integer, primary_key=True)
@@ -146,13 +167,21 @@ class AreaSource(Base):
     ald2 = sa.Column(sa.Numeric(asdecimal=False))
     acro = sa.Column(sa.Numeric(asdecimal=False))
     butal_3 = sa.Column(sa.Numeric(asdecimal=False))
+    toluene = sa.Column(sa.Numeric(asdecimal=False))
+    so2 = sa.Column(sa.Numeric(asdecimal=False))
     geom = sa.Column(Geometry('MULTIPOLYGON'))
+
+    @classmethod
+    def construct_namedtuple(cls, *args):
+        return cls.namedtuple_class(*[null_data(a) for a in args])
 
     def as_namedtuple(self):
         geom = geo.multipolygon_to_point_list(self.geom)
-        return self.namedtuple_class(self.facility, self.gid, self.sf_id, self.nox, self.benz,
-                                     self.pm2_5, self.dies_pm25, self.ec, self.oc, self.co, self.form,
-                                     self.ald2, self.acro, self.butal_3, geom)
+        return self.namedtuple_class(self.facility, self.gid, self.sf_id, null_data(self.nox), null_data(self.benz),
+                                     null_data(self.pm2_5), null_data(self.dies_pm25), null_data(self.ec),
+                                     null_data(self.oc), null_data(self.co), null_data(self.form),
+                                     null_data(self.ald2), null_data(self.acro), null_data(self.butal_3),
+                                     null_data(self.toluene), null_data(self.so2), geom)
 
     @staticmethod
     def to_vertices(source):
@@ -160,16 +189,19 @@ class AreaSource(Base):
         for (lng, lat) in source.geom:
             (x, y) = geo.mercator_to_lcc(lng, lat)
             results.append(
-                [source.gid, source.sf_id, x, y, source.nox, source.benz, source.pm2_5,
-                 source.dies_pm25, source.ec, source.oc, source.co, source.form, source.ald2, source.acro,
-                 source.butal_3])
+                [source.gid, source.sf_id, x, y, null_data(source.nox), null_data(source.benz),
+                 null_data(source.pm2_5),
+                 null_data(source.dies_pm25), null_data(source.ec),
+                 null_data(source.oc), null_data(source.co), null_data(source.form),
+                 null_data(source.ald2), null_data(source.acro), null_data(source.butal_3),
+                 null_data(source.toluene), null_data(source.so2)])
         return results
 
 
 class ShipInTransit(Base):
     __tablename__ = "ships_in_transit"
     fields = ["facility", "gid", "startx", "starty", "endx", "endy", "sf_id", "nox", "benz", "pm2_5",
-              "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3", "stack_height",
+              "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3", "toluene", "so2", "stack_height",
               "stack_diameter", "stack_velocity", "stack_temperature", "geom"]
     namedtuple_class = namedtuple("ShipInTransit", fields)
     gid = sa.Column("object_id", sa.Integer, primary_key=True)
@@ -190,24 +222,34 @@ class ShipInTransit(Base):
     ald2 = sa.Column(sa.Numeric(asdecimal=False))
     acro = sa.Column(sa.Numeric(asdecimal=False))
     butal_3 = sa.Column(sa.Numeric(asdecimal=False))
+    toluene = sa.Column(sa.Numeric(asdecimal=False))
+    so2 = sa.Column(sa.Numeric(asdecimal=False))
     stack_height = sa.Column(sa.Numeric(asdecimal=False))
     stack_diameter = sa.Column(sa.Numeric(asdecimal=False))
     stack_velocity = sa.Column(sa.Numeric(asdecimal=False))
     stack_temperature = sa.Column(sa.Numeric(asdecimal=False))
     geom = sa.Column(Geometry('MULTILINESTRING'))
 
+    @classmethod
+    def construct_namedtuple(cls, *args):
+        return cls.namedtuple_class(*[null_data(a) for a in args])
+
     def as_namedtuple(self):
         return self.namedtuple_class(self.facility, self.gid, self.startx, self.starty, self.endx,
-                                     self.endy, self.sf_id, self.nox, self.benz, self.pm2_5, self.dies_pm25,
-                                     self.ec, self.oc, self.co, self.form, self.ald2, self.acro, self.butal_3,
-                                     self.stack_height, self.stack_diameter, self.stack_velocity,
-                                     self.stack_temperature, geo.multilinestring_to_point_list(self.geom))
+                                     self.endy, self.sf_id, null_data(self.nox), null_data(self.benz),
+                                     null_data(self.pm2_5), null_data(self.dies_pm25), null_data(self.ec),
+                                     null_data(self.oc), null_data(self.co), null_data(self.form),
+                                     null_data(self.ald2), null_data(self.acro), null_data(self.butal_3),
+                                     null_data(self.toluene), null_data(self.so2), self.stack_height, self.stack_diameter,
+                                     self.stack_velocity, self.stack_temperature,
+                                     geo.multilinestring_to_point_list(self.geom))
 
 
 class PointSource(Base):
     __tablename__ = "point_sources"
     fields = ["pltname", "gid", "x", "y", "sf_id", "stkht", "stkdm", "stktmp", "stkvel", "nox", "benz",
-              "pm25", "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3", "geom"]
+              "pm25", "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3", "toluene", "so2", "geom",
+              "in_port"]
     namedtuple_class = namedtuple("PointSource", fields)
     pltname = sa.Column(sa.Text)
     gid = sa.Column(sa.Integer, primary_key=True)
@@ -229,20 +271,31 @@ class PointSource(Base):
     ald2 = sa.Column(sa.Numeric(asdecimal=False))
     acro = sa.Column(sa.Numeric(asdecimal=False))
     butal_3 = sa.Column(sa.Numeric(asdecimal=False))
+    toluene = sa.Column(sa.Numeric(asdecimal=False))
+    so2 = sa.Column(sa.Numeric(asdecimal=False))
     geom = sa.Column(Geometry('POINT'))
+    in_port = sa.Column(sa.Boolean)
+
+    @classmethod
+    def construct_namedtuple(cls, *args):
+        return cls.namedtuple_class(*[null_data(a) for a in args])
 
     def as_namedtuple(self):
         shape = geo.to_shape(self.geom)
         return self.namedtuple_class(self.pltname, self.gid, self.x, self.y, self.sf_id, self.stkht,
-                                     self.stkdm, self.stktmp, self.stkvel, self.nox, self.benz, self.pm25,
-                                     self.dies_pm25, self.ec, self.oc, self.co, self.form, self.ald2,
-                                     self.acro, self.butal_3, [shape.x, shape.y])
+                                     self.stkdm, self.stktmp, self.stkvel, null_data(self.nox),
+                                     null_data(self.benz), null_data(self.pm25),
+                                     null_data(self.dies_pm25), null_data(self.ec),
+                                     null_data(self.oc), null_data(self.co), null_data(self.form),
+                                     null_data(self.ald2), null_data(self.acro), null_data(self.butal_3),
+                                     null_data(self.toluene), null_data(self.so2), [shape.x, shape.y], self.in_port)
 
 
 class Scenario(Base):
     __tablename__ = "scenario"
     scenario_id = sa.Column(sa.Integer, primary_key=True)
-    user_id = sa.Column(sa.Integer)
+    user_id = sa.Column(sa.Text)
+    tool = sa.Column(sa.Text)
     name = sa.Column(sa.Text)
     hour = sa.Column(sa.Integer)
     season = sa.Column(sa.Integer)
@@ -253,8 +306,13 @@ class Scenario(Base):
     railways = sa.Column(JSON)
     roads = sa.Column(JSON)
     ships_in_transit = sa.Column(JSON)
-    location = sa.Column(Geometry("POINT"))
+    center = sa.Column(Geometry("POINT"))
     zoom = sa.Column(sa.Integer)
+    area_source_fields = sa.Column(JSON)
+    point_source_fields = sa.Column(JSON)
+    railway_fields = sa.Column(JSON)
+    road_fields = sa.Column(JSON)
+    ship_in_transit_fields = sa.Column(JSON)
     include_area_sources = sa.Column(sa.Boolean)
     include_point_sources = sa.Column(sa.Boolean)
     include_railways = sa.Column(sa.Boolean)
@@ -264,6 +322,35 @@ class Scenario(Base):
     @property
     def safe_name(self):
         return "".join([x if x.isalnum() else "_" for x in self.name])
+
+    @property
+    def to_dict(self):
+        return {
+            "scenario_id": self.scenario_id,
+            "tool": self.tool,
+            "name": self.name,
+            "hour": self.hour,
+            "season": self.season,
+            "day": self.day,
+            "met_conditions": self.met_conditions,
+            "area_sources": self.area_sources,
+            "point_sources": self.point_sources,
+            "railways": self.railways,
+            "roads": self.roads,
+            "ships_in_transit": self.ships_in_transit,
+            "center": point_wkt_to_array(self.center),
+            "zoom": self.zoom,
+            "area_source_fields": self.area_source_fields,
+            "point_source_fields": self.point_source_fields,
+            "railway_fields": self.railway_fields,
+            "road_fields": self.road_fields,
+            "ship_in_transit_fields": self.ship_in_transit_fields,
+            "include_area_sources": self.include_area_sources,
+            "include_point_sources": self.include_area_sources,
+            "include_railways": self.include_railways,
+            "include_roads": self.include_roads,
+            "include_ships_in_transit": self.include_ships_in_transit
+        }
 
 
 class AbstractScenarioRun(object):
@@ -276,7 +363,7 @@ class AbstractScenarioRun(object):
     def _get_bounds_helper(self, scenario):
         if scenario.include_area_sources:
             for source in scenario.area_sources:
-                for (lng, lat) in source[14]:
+                for (lng, lat) in source[16]:
                     if lat < self.min_lat or self.min_lat is None:
                         self.min_lat = lat
                     if lat > self.max_lat or self.max_lat is None:
@@ -287,7 +374,7 @@ class AbstractScenarioRun(object):
                         self.max_lng = lng
         if scenario.include_point_sources:
             for source in scenario.point_sources:
-                (lng, lat) = source[20]
+                (lng, lat) = source[22]
                 if lat < self.min_lat or self.min_lat is None:
                     self.min_lat = lat
                 if lat > self.max_lat or self.max_lat is None:
@@ -309,7 +396,7 @@ class AbstractScenarioRun(object):
                         self.max_lng = lng
         if scenario.include_railways:
             for source in scenario.railways:
-                for (lng, lat) in source[18]:
+                for (lng, lat) in source[20]:
                     if lat < self.min_lat or self.min_lat is None:
                         self.min_lat = lat
                     if lat > self.max_lat or self.max_lat is None:
@@ -320,7 +407,7 @@ class AbstractScenarioRun(object):
                         self.max_lng = lng
         if scenario.include_ships_in_transit:
             for source in scenario.ships_in_transit:
-                for (lng, lat) in source[22]:
+                for (lng, lat) in source[24]:
                     if lat < self.min_lat or self.min_lat is None:
                         self.min_lat = lat
                     if lat > self.max_lat or self.max_lat is None:
@@ -346,6 +433,8 @@ class ScenarioRun(Base, AbstractScenarioRun):
     __tablename__ = "scenario_run"
     scenario_run_id = sa.Column(sa.Integer, primary_key=True)
     scenario_id = sa.Column(sa.Integer, sa.ForeignKey("scenario.scenario_id"))
+    user_id = sa.Column(sa.Text)
+    tool = sa.Column(sa.Text)
     status = sa.Column(sa.Text)
     output_directory = sa.Column(sa.Text)
     results_file_name = sa.Column(sa.Text)
@@ -361,7 +450,7 @@ class ScenarioRun(Base, AbstractScenarioRun):
 
     def __init__(self, *args, **kwargs):
         super(ScenarioRun, self).__init__(*args, **kwargs)
-        dir_name = str(uuid.uuid4())[:10]
+        dir_name = str(uuid.uuid4())
         self.output_directory = os.path.join(settings.scenario_run_directory, dir_name)
         self.results_file_name = "%s.tar.gz" % self.scenario.safe_name
         try:
@@ -369,6 +458,31 @@ class ScenarioRun(Base, AbstractScenarioRun):
         except OSError:
             pass
         self._get_bounds()
+
+    @property
+    def to_dict(self):
+        return {
+            "scenario_run_id": self.scenario_run_id,
+            "tool": self.tool,
+            "status": self.status,
+            "model_type": self.model_type,
+            "min_value": self.model_min_value,
+            "max_value": self.model_max_value,
+            "min_lat": self.min_lat,
+            "max_lat": self.max_lat,
+            "min_lng": self.min_lng,
+            "max_lng": self.max_lng,
+            "pollutant": self.pollutant,
+            "scenario_name": self.scenario.name
+        }
+
+    @property
+    def image_file(self):
+        return os.path.join(self.output_directory, "concentrations.png")
+
+    @property
+    def legend_file(self):
+        return os.path.join(self.output_directory, "concentrations_legend.png")
 
     def finalize_run(self):
         self.status = "completed"
@@ -381,7 +495,9 @@ class ScenarioRun(Base, AbstractScenarioRun):
 class ComparisonScenarioRun(Base, AbstractScenarioRun):
     __tablename__ = "comparison_scenario_run"
     scenario_run_id = sa.Column(sa.Integer, primary_key=True)
+    user_id = sa.Column(sa.Text)
     status = sa.Column(sa.Text)
+    tool = sa.Column(sa.Text)
     output_directory_1 = sa.Column(sa.Text)
     output_directory_2 = sa.Column(sa.Text)
     results_file_name = sa.Column(sa.Text)
@@ -389,7 +505,7 @@ class ComparisonScenarioRun(Base, AbstractScenarioRun):
     pollutant = sa.Column(sa.Text)
     model_min_value = sa.Column(sa.Float)
     model_max_value = sa.Column(sa.Float)
-    comparison_mode = sa.Column(sa.Text)
+    comparison_mode = sa.Column(sa.Integer)
     min_lat = sa.Column(sa.Numeric(asdecimal=False))
     max_lat = sa.Column(sa.Numeric(asdecimal=False))
     min_lng = sa.Column(sa.Numeric(asdecimal=False))
@@ -402,8 +518,8 @@ class ComparisonScenarioRun(Base, AbstractScenarioRun):
     def __init__(self, *args, **kwargs):
         super(ComparisonScenarioRun, self).__init__(*args, **kwargs)
         self.results_file_name = "%s_vs_%s.tar.gz" % (self.scenario_1.safe_name, self.scenario_2.safe_name)
-        dir_name_1 = str(uuid.uuid4())[:10]
-        dir_name_2 = str(uuid.uuid4())[:10]
+        dir_name_1 = str(uuid.uuid4())
+        dir_name_2 = str(uuid.uuid4())
         self.output_directory_1 = os.path.join(settings.scenario_run_directory, dir_name_1)
         self.output_directory_2 = os.path.join(settings.scenario_run_directory, dir_name_2)
         self.temp_dir = tempfile.mkdtemp()
@@ -413,6 +529,33 @@ class ComparisonScenarioRun(Base, AbstractScenarioRun):
         except OSError:
             pass
         self._get_bounds()
+
+    @property
+    def to_dict(self):
+        return {
+            "scenario_run_id": self.scenario_run_id,
+            "status": self.status,
+            "tool": self.tool,
+            "model_type": self.model_type,
+            "min_value": self.model_min_value,
+            "max_value": self.model_max_value,
+            "min_lat": self.min_lat,
+            "max_lat": self.max_lat,
+            "min_lng": self.min_lng,
+            "max_lng": self.max_lng,
+            "pollutant": self.pollutant,
+            "comparison_mode": self.comparison_mode,
+            "scenario_1_name": self.scenario_1.name,
+            "scenario_2_name": self.scenario_2.name
+        }
+
+    @property
+    def image_file(self):
+        return os.path.join(self.output_directory_1, "concentrations.png")
+
+    @property
+    def legend_file(self):
+        return os.path.join(self.output_directory_1, "concentrations_legend.png")
 
     def finalize_run(self):
         self.status = "completed"
@@ -432,8 +575,3 @@ class ComparisonScenarioRun(Base, AbstractScenarioRun):
         os.chdir(settings.output_tar_directory)
         subprocess.call(["tar", "-C", self.temp_dir, "-czf", self.results_file_name, "."])
         os.chdir(starting_dir)
-
-
-if __name__ == "__main__":
-    Base.metadata.drop_all()
-    Base.metadata.create_all()

@@ -3,15 +3,14 @@ import os
 import subprocess
 import itertools
 import time
+import numpy
 
 from mako.lookup import TemplateLookup
-import numpy
 import tablib
 
-import geo
+from ctools_backend import geo
 import settings
 import models
-
 
 _lookup = TemplateLookup([settings.template_directory], strict_undefined=True)
 
@@ -39,19 +38,19 @@ class CTools(object):
         if scenario.include_area_sources:
             for a in scenario.area_sources:
                 a[0] = a[0].replace(" ", "_").replace(",", "")
-            self.area_sources = [models.AreaSource.namedtuple_class(*a) for a in scenario.area_sources]
+            self.area_sources = [models.AreaSource.construct_namedtuple(*a) for a in scenario.area_sources]
         if scenario.include_point_sources:
             for p in scenario.point_sources:
                 p[0] = p[0].replace(" ", "_").replace(",", "")
-            self.point_sources = [models.PointSource.namedtuple_class(*p) for p in scenario.point_sources]
+            self.point_sources = [models.PointSource.construct_namedtuple(*p) for p in scenario.point_sources]
         if scenario.include_railways:
-            self.railways = [models.Railway.namedtuple_class(*r) for r in scenario.railways]
+            self.railways = [models.Railway.construct_namedtuple(*r) for r in scenario.railways]
         if scenario.include_roads:
-            self.roads = self._split_roads(models.Road.namedtuple_class(*r) for r in scenario.roads)
+            self.roads = self._split_roads(models.Road.construct_namedtuple(*r) for r in scenario.roads)
         if scenario.include_ships_in_transit:
             for sit in scenario.ships_in_transit:
                 sit[0] = sit[0].replace(" ", "_").replace(",", "")
-            self.ships_in_transit = [models.ShipInTransit.namedtuple_class(*r) for r in scenario.ships_in_transit]
+            self.ships_in_transit = [models.ShipInTransit.construct_namedtuple(*r) for r in scenario.ships_in_transit]
         if output_directory:
             self.output_directory = output_directory
         else:
@@ -157,7 +156,8 @@ class CTools(object):
         for source in self.area_sources:
             results.extend(models.AreaSource.to_vertices(source))
         dataset = tablib.Dataset(headers=["object_id", "sf_id", "x", "y", "nox", "benz", "pm2_5",
-                                          "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3"],
+                                          "dies_pm25", "ec", "oc", "co", "form", "ald2", "acro", "butal_3", "toluene",
+                                          "so2"],
                                  *results)
         with open(self.area_source_file, 'w') as f:
             f.write(dataset.csv)
